@@ -100,16 +100,20 @@ nav.toc a:hover{border-bottom-color:var(--accent); color:var(--ink)}
 .viewport:active{cursor:grabbing}
 .viewport .hint{
   position:absolute; left:14px; top:10px; font-size:12px; color:var(--muted); pointer-events:none;
+  transition:opacity .2s ease;
 }
+.viewport:has(.movebadge.show) .hint{opacity:0}
 .cube.viewglide{transition:transform .38s ease}
-.viewport .hud{
-  position:absolute; left:50%; bottom:12px; transform:translateX(-50%);
-  display:flex; flex-direction:column; align-items:center; gap:8px; z-index:5;
+.hudbar{
+  display:flex; align-items:center; justify-content:center; gap:10px; flex-wrap:wrap;
+  padding:10px 14px; border-top:1px solid var(--line);
+  background:color-mix(in srgb, var(--panel) 65%, transparent);
 }
+.hudbar[hidden]{display:none}
 .hud-status{
   font-size:12.5px; color:var(--muted); background:color-mix(in srgb, var(--panel) 88%, transparent);
   border:1px solid var(--line); padding:3px 12px; border-radius:999px; white-space:nowrap;
-  max-width:min(92vw, 460px); overflow:hidden; text-overflow:ellipsis;
+  max-width:100%; overflow:hidden; text-overflow:ellipsis;
 }
 .hud-buttons{display:flex; gap:8px}
 .movebadge{
@@ -320,13 +324,13 @@ footer.site .wrap{display:flex; flex-direction:column; gap:6px}
         <div class="scene"><div class="cube" id="cube" aria-hidden="true"></div></div>
         <div class="hint">drag to orbit · double-click to reset view</div>
         <div class="movebadge" id="movebadge" aria-live="polite"></div>
-        <div class="hud" id="hud" hidden>
-          <div class="hud-status" id="hudstatus"></div>
-          <div class="hud-buttons">
-            <button class="btn" id="hud-back" title="Step back (←)">‹ Back</button>
-            <button class="btn primary" id="hud-play" title="Play / pause (space)">Play</button>
-            <button class="btn" id="hud-next" title="Next move (→)">Next ›</button>
-          </div>
+      </div>
+      <div class="hudbar" id="hud" hidden>
+        <div class="hud-status" id="hudstatus"></div>
+        <div class="hud-buttons">
+          <button class="btn" id="hud-back" title="Step back (←)">‹ Back</button>
+          <button class="btn primary" id="hud-play" title="Play / pause (space)">Play</button>
+          <button class="btn" id="hud-next" title="Next move (→)">Next ›</button>
         </div>
       </div>
       <div class="progress" id="progress" aria-label="Solve progress"></div>
@@ -370,9 +374,10 @@ footer.site .wrap{display:flex; flex-direction:column; gap:6px}
     no internet needed once it's open.</p>
     <ul>
       <li><strong>Stuck on a real cube?</strong> Press <em>Enter my cube</em> and copy your cube's stickers
-      onto the flat map to get a personal solution. Then follow along with the <em>Next</em> button floating
-      right on the cube — the view re-aligns itself before every move, and each move flashes on screen with
-      its layer and direction. <kbd>→</kbd> <kbd>←</kbd> and <kbd>Space</kbd> also step and play.</li>
+      onto the flat map to get a personal solution. Then follow along with the <em>Next</em> button right
+      under the cube — the camera automatically swings to show whichever face is turning (even the back or
+      bottom), and each move flashes on screen with its layer and direction.
+      <kbd>→</kbd> <kbd>←</kbd> and <kbd>Space</kbd> also step and play.</li>
       <li><strong>Want to learn?</strong> Read the steps below. Every algorithm on this page is a button —
       click it and the cube above performs it. Each step also has a <em>Practice</em> button that sets
       the cube up so only that step is left to do.</li>
@@ -1279,24 +1284,48 @@ function renderProgress(){
 
 /* ---------- orbit ---------- */
 const viewport = $('#viewport');
-let viewX = -24, viewY = -36;
+let viewX = -24, viewY = -36, viewScale = 1;
 function applyView(){
-  cubeEl.style.transform = `translateZ(-60px) rotateX(${viewX}deg) rotateY(${viewY}deg)`;
+  cubeEl.style.transform =
+    `translateZ(-60px) scale(${viewScale}) rotateX(${viewX}deg) rotateY(${viewY}deg)`;
 }
-applyView();
-// Glide the camera back to the canonical angle (white down, green front) so
-// solution moves always read correctly, even after the user drags the view.
-function resetViewSmooth(cb){
-  const tx = -24;
-  const ty = -36 + Math.round((viewY + 36) / 360) * 360;   // nearest equivalent angle
+function fitScale(){
+  viewScale = Math.min(1, Math.max(0.62, (viewport.clientWidth - 30) / 400));
+  applyView();
+}
+window.addEventListener('resize', fitScale);
+fitScale();
+
+function glideView(tx, ty, cb){
   if (Math.abs(viewX - tx) < 2 && Math.abs(viewY - ty) < 2){
-    viewX = tx; viewY = ty; applyView();
-    cb && cb(); return;
+    viewX = tx; viewY = ty; applyView(); cb && cb(); return;
   }
   if (REDUCED){ viewX = tx; viewY = ty; applyView(); cb && cb(); return; }
   cubeEl.classList.add('viewglide');
   viewX = tx; viewY = ty; applyView();
   setTimeout(() => { cubeEl.classList.remove('viewglide'); cb && cb(); }, 400);
+}
+// Equivalent target yaw closest to where the camera already is (no long spins).
+const nearestTurn = t => t + Math.round((viewY - t) / 360) * 360;
+function resetViewSmooth(cb){ glideView(-24, nearestTurn(-36), cb); }
+
+// How much a face points toward the viewer right now (1 = head-on, <0 = hidden).
+function faceToward(face){
+  const n = C.FACE_VEC[face];
+  const x = n[0], y = -n[1], z = n[2];                    // CSS axes (y points down)
+  const by = viewY * Math.PI / 180, ax = viewX * Math.PI / 180;
+  const z1 = z * Math.cos(by) - x * Math.sin(by);         // rotateY
+  return y * Math.sin(ax) + z1 * Math.cos(ax);            // rotateX → z toward viewer
+}
+// Camera targets that frame each face comfortably (null = keep current yaw).
+const FACE_VIEW = { F:[-24,-25], R:[-24,-65], L:[-24,42], B:[-24,-145], U:[-38,null], D:[26,null] };
+// Before a solution move: if its face is hidden or too edge-on, swing the
+// camera so the user watches the turning face. If it's already in view, stay put.
+function orientForMove(move, cb){
+  const face = move[0];
+  if (faceToward(face) >= 0.33){ cb && cb(); return; }
+  const [tx, ty] = FACE_VIEW[face];
+  glideView(tx, ty === null ? viewY : nearestTurn(ty), cb);
 }
 let dragging = null;
 viewport.addEventListener('pointerdown', e => {
@@ -1477,13 +1506,13 @@ function stepBack(){
   const mv = sol.flat[sol.ptr - 1].name;
   const inv = C.MOVE_NAMES[C.invertMove(C.parseAlg(mv)[0])];
   stepping = true;
-  resetViewSmooth(() =>
+  orientForMove(inv, () =>
     enqueue([inv], { after: () => { stepping = false; sol.ptr--; renderSolution(); } }));
 }
 function stepForward(cb){
   if (stepping || !sol || sol.stale || sol.ptr >= sol.flat.length){ playFlag = false; renderSolution(); return; }
   stepping = true;
-  resetViewSmooth(() => {
+  orientForMove(sol.flat[sol.ptr].name, () => {
     if (!sol || sol.stale){ stepping = false; return; }
     const mv = sol.flat[sol.ptr].name;
     enqueue([mv], { after: () => {
@@ -1494,6 +1523,7 @@ function stepForward(cb){
         playFlag = false;
         toast('Solved! 🎉 Try following the same 7 steps yourself.');
         renderSolution();
+        resetViewSmooth();
       }
       cb && cb();
     }});
