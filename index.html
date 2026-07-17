@@ -1355,19 +1355,14 @@ let queue = [], animating = false;
 function animateMove(name, dur, cb){
   const apply = () => { C.applyMove(state, name); render(); cb && cb(); };
   if (dur <= 0){ apply(); return; }
-  showBadge(name, dur);
   const face = name[0];
   const q = name.endsWith('2') ? 2 : name.endsWith("'") ? -1 : 1;
   const [axis, deg] = MOVE_AXIS[face];
   const v = C.FACE_VEC[face];
   const layer = cubies.filter(c =>
     (v[0] && c.x === v[0]) || (v[1] && c.y === v[1]) || (v[2] && c.z === v[2]));
-  const ms = Math.abs(q) === 2 ? dur * 1.6 : dur;
-  for (const c of layer){
-    c.el.style.transition = `transform ${ms}ms cubic-bezier(.35,.15,.25,1)`;
-    c.el.style.transform = `rotate${axis}(${deg * q}deg) ${c.base}`;
-  }
-  setTimeout(() => {
+  showBadge(name, q === 2 ? dur * 2 + 40 : dur);
+  const finish = () => {
     for (const c of layer){
       c.el.style.transition = 'none';
       c.el.style.transform = c.base;
@@ -1375,7 +1370,25 @@ function animateMove(name, dur, cb){
     // force style flush so the reset isn't animated
     void cubeEl.offsetHeight;
     apply();
-  }, ms + 20);
+  };
+  const turn = (angle, ease) => {
+    for (const c of layer){
+      c.el.style.transition = `transform ${dur}ms ${ease}`;
+      c.el.style.transform = `rotate${axis}(${angle}deg) ${c.base}`;
+    }
+  };
+  if (q === 2){
+    // A half turn plays as two quarter turns with a beat at 90° — much easier
+    // to follow than one fast 180° spin.
+    turn(deg, 'cubic-bezier(.4,.15,.6,.6)');
+    setTimeout(() => {
+      turn(deg * 2, 'cubic-bezier(.3,.35,.25,1)');
+      setTimeout(finish, dur + 20);
+    }, dur + 40);
+  } else {
+    turn(deg * q, 'cubic-bezier(.35,.15,.25,1)');
+    setTimeout(finish, dur + 20);
+  }
 }
 function pump(){
   if (animating) return;
