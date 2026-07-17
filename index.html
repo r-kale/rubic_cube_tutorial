@@ -128,6 +128,24 @@ nav.toc a:hover{border-bottom-color:var(--accent); color:var(--ink)}
   font-size:18px; color:var(--accent); margin-right:8px;
 }
 .movebadge.show{opacity:1}
+.facelet.dim{opacity:.26; filter:saturate(.15)}
+.stepcard{
+  position:absolute; inset:0; z-index:8;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  gap:5px; text-align:center; padding:14px;
+  background:color-mix(in srgb, var(--bg) 80%, transparent);
+  backdrop-filter:blur(6px);
+}
+.stepcard[hidden]{display:none}
+.stepcard-eyebrow{
+  font-size:11.5px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--accent); font-weight:700;
+}
+.stepcard h3{margin:0; font-size:20px}
+.stepcard p{margin:0; font-size:13.5px; color:var(--muted); max-width:46ch}
+.ministage{height:148px; width:190px; perspective:700px; position:relative; pointer-events:none}
+.minicube{position:absolute; left:50%; top:50%; transform-style:preserve-3d}
+.stepcard-cap{font-size:11.5px; color:var(--muted); margin-bottom:4px}
 
 /* ---------- "Enter my cube" dialog ---------- */
 dialog#painter{
@@ -324,6 +342,14 @@ footer.site .wrap{display:flex; flex-direction:column; gap:6px}
         <div class="scene"><div class="cube" id="cube" aria-hidden="true"></div></div>
         <div class="hint">drag to orbit · double-click to reset view</div>
         <div class="movebadge" id="movebadge" aria-live="polite"></div>
+        <div class="stepcard" id="stepcard" hidden>
+          <div class="stepcard-eyebrow" id="sc-eyebrow"></div>
+          <h3 id="sc-title"></h3>
+          <p id="sc-blurb"></p>
+          <div class="ministage"><div class="minicube" id="minicube" aria-hidden="true"></div></div>
+          <div class="stepcard-cap">Goal — the highlighted pieces are this step's job</div>
+          <button class="btn primary" id="sc-start">Start step ›</button>
+        </div>
       </div>
       <div class="hudbar" id="hud" hidden>
         <div class="hud-status" id="hudstatus"></div>
@@ -375,8 +401,10 @@ footer.site .wrap{display:flex; flex-direction:column; gap:6px}
     <ul>
       <li><strong>Stuck on a real cube?</strong> Press <em>Enter my cube</em> and copy your cube's stickers
       onto the flat map to get a personal solution. Then follow along with the <em>Next</em> button right
-      under the cube — the camera automatically swings to show whichever face is turning (even the back or
-      bottom), and each move flashes on screen with its layer and direction.
+      under the cube. Each step opens with a <strong>goal card</strong> showing exactly what the cube will
+      look like when that step is done — the highlighted pieces are the ones it solves — and playback waits
+      until you're ready. The camera automatically swings to show whichever face is turning (even the back
+      or bottom), and each move stays on screen with its layer and direction.
       <kbd>→</kbd> <kbd>←</kbd> and <kbd>Space</kbd> also step and play.</li>
       <li><strong>Want to learn?</strong> Read the steps below. Every algorithm on this page is a button —
       click it and the cube above performs it. Each step also has a <em>Practice</em> button that sets
@@ -1232,40 +1260,53 @@ const FACE_TRANSFORM = {
 const MOVE_AXIS = { U:['Y',-90], D:['Y',90], R:['X',90], L:['X',-90], F:['Z',90], B:['Z',-90] };
 
 const cubeEl = $('#cube');
-const cubies = [];      // { el, x, y, z, base, faces: {U: el, ...} }
-const faceletEls = {};  // "x,y,z,F" -> element
-for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (let z = -1; z <= 1; z++){
-  if (!x && !y && !z) continue;
-  const el = document.createElement('div');
-  el.className = 'cubie';
-  const base = `translate3d(${x*GAP}px, ${-y*GAP}px, ${z*GAP}px)`;
-  el.style.transform = base;
-  const faces = {};
-  for (const f of C.FACES){
-    const v = C.FACE_VEC[f];
-    if (v[0] && v[0] !== x) continue;
-    if (v[1] && v[1] !== y) continue;
-    if (v[2] && v[2] !== z) continue;
-    if (!((v[0] && Math.abs(x) === 1 && v[0] === x) ||
-          (v[1] && Math.abs(y) === 1 && v[1] === y) ||
-          (v[2] && Math.abs(z) === 1 && v[2] === z))) continue;
-    const fe = document.createElement('div');
-    fe.className = 'facelet';
-    fe.style.transform = FACE_TRANSFORM[f];
-    el.appendChild(fe);
-    faces[f] = fe;
-    faceletEls[`${x},${y},${z},${f}`] = fe;
+// Builds a full 27-cubie 3D cube inside `container` and returns its parts.
+// Used for the main cube and for the mini goal-preview cube on step cards.
+function buildCubeInto(container){
+  const faceletMap = {}, list = [];
+  for (let x = -1; x <= 1; x++) for (let y = -1; y <= 1; y++) for (let z = -1; z <= 1; z++){
+    if (!x && !y && !z) continue;
+    const el = document.createElement('div');
+    el.className = 'cubie';
+    const base = `translate3d(${x*GAP}px, ${-y*GAP}px, ${z*GAP}px)`;
+    el.style.transform = base;
+    const faces = {};
+    for (const f of C.FACES){
+      const v = C.FACE_VEC[f];
+      if (!((v[0] && v[0] === x) || (v[1] && v[1] === y) || (v[2] && v[2] === z))) continue;
+      const fe = document.createElement('div');
+      fe.className = 'facelet';
+      fe.style.transform = FACE_TRANSFORM[f];
+      el.appendChild(fe);
+      faces[f] = fe;
+      faceletMap[`${x},${y},${z},${f}`] = fe;
+    }
+    container.appendChild(el);
+    list.push({ el, x, y, z, base, faces });
   }
-  cubeEl.appendChild(el);
-  cubies.push({ el, x, y, z, base, faces });
+  return { faceletMap, list };
 }
+const mainCube = buildCubeInto(cubeEl);
+const cubies = mainCube.list;
+const faceletEls = mainCube.faceletMap;
 
-function render(){
-  for (const key in faceletEls){ faceletEls[key].style.background = '#0b0e18'; }
-  for (const st of C.stickers(state)){
-    const el = faceletEls[`${st.pos[0]},${st.pos[1]},${st.pos[2]},${st.face}`];
-    if (el) el.style.background = COLORS[st.color];
+// Paint a cube's stickers from a state. With a `focus` set, stickers outside
+// the set are dimmed — used to spotlight the pieces a solving step works on.
+function paintStickers(map, s, focus){
+  for (const key in map){
+    map[key].style.background = '#0b0e18';
+    map[key].classList.remove('dim');
   }
+  for (const st of C.stickers(s)){
+    const key = `${st.pos[0]},${st.pos[1]},${st.pos[2]},${st.face}`;
+    const el = map[key];
+    if (!el) continue;
+    el.style.background = COLORS[st.color];
+    if (focus && !focus.has(key)) el.classList.add('dim');
+  }
+}
+function render(){
+  paintStickers(faceletEls, state);
   renderProgress();
 }
 
@@ -1329,7 +1370,7 @@ function orientForMove(move, cb){
 }
 let dragging = null;
 viewport.addEventListener('pointerdown', e => {
-  if (e.target.closest('button')) return;
+  if (e.target.closest('button, .stepcard')) return;
   dragging = { x: e.clientX, y: e.clientY, vx: viewX, vy: viewY };
   viewport.setPointerCapture(e.pointerId);
 });
@@ -1341,7 +1382,7 @@ viewport.addEventListener('pointermove', e => {
 });
 viewport.addEventListener('pointerup', () => dragging = null);
 viewport.addEventListener('dblclick', e => {
-  if (e.target.closest('button')) return;
+  if (e.target.closest('button, .stepcard')) return;
   viewX = -24; viewY = -36; applyView();
 });
 
@@ -1417,7 +1458,8 @@ function showBadge(name, dur){
   badge.innerHTML = `<b>${name}</b>${FACE_WORD[name[0]]} layer · ${dirWord}`;
   badge.classList.add('show');
   clearTimeout(badgeTimer);
-  badgeTimer = setTimeout(() => badge.classList.remove('show'), Math.max(dur * 1.6 + 420, 700));
+  // Linger well past the animation so the move can be read and absorbed.
+  badgeTimer = setTimeout(() => badge.classList.remove('show'), Math.max(dur + 2600, 3200));
 }
 
 /* ---------- toast ---------- */
@@ -1437,17 +1479,25 @@ let playFlag = false;
 let stepping = false;   // guards double-triggered steps while the view glides
 
 function markStale(){
-  if (sol && !sol.stale){ sol.stale = true; playFlag = false; solNote.classList.add('show'); renderSolution(); }
+  if (sol && !sol.stale){ sol.stale = true; playFlag = false; hideStepCard(); solNote.classList.add('show'); renderSolution(); }
 }
 
 function computeSolution(){
   if (busy()) return;
   playFlag = false;
+  hideStepCard();
   if (C.isSolved(state)){ sol = null; solEl.innerHTML = '<div class="empty">Already solved — scramble it first!</div>'; solNote.classList.remove('show'); updateHUD(); return; }
   const res = C.solve(state);
   const flat = [];
   res.phases.forEach((p, pi) => p.moves.forEach(name => flat.push({ name, phase: pi })));
-  sol = { phases: res.phases, flat, ptr: 0, stale: false };
+  // Snapshot the cube as it will look at the end of each step, for goal previews.
+  const previews = [];
+  const sim = C.cloneState(state);
+  res.phases.forEach(p => {
+    for (const mv of p.moves) C.applyMove(sim, mv);
+    previews.push(C.cloneState(sim));
+  });
+  sol = { phases: res.phases, flat, ptr: 0, stale: false, phasePreviews: previews, announced: new Set() };
   solNote.classList.remove('show');
   renderSolution();
 }
@@ -1513,17 +1563,38 @@ function togglePlay(){
   if (sol.ptr >= sol.flat.length) return;
   playFlag = true; renderSolution(); playNext();
 }
+// Un-announce a phase when the pointer sits at its first move again, so its
+// goal card shows once more on the way forward.
+function unannounceAtBoundary(){
+  const at = sol.flat[sol.ptr];
+  if (at && (sol.ptr === 0 || sol.flat[sol.ptr - 1].phase !== at.phase))
+    sol.announced.delete(at.phase);
+}
 function stepBack(){
   if (busy() || stepping || !sol || sol.stale || sol.ptr === 0) return;
   playFlag = false;
+  hideStepCard();
+  unannounceAtBoundary();
   const mv = sol.flat[sol.ptr - 1].name;
   const inv = C.MOVE_NAMES[C.invertMove(C.parseAlg(mv)[0])];
   stepping = true;
   orientForMove(inv, () =>
-    enqueue([inv], { after: () => { stepping = false; sol.ptr--; renderSolution(); } }));
+    enqueue([inv], { after: () => {
+      stepping = false; sol.ptr--; unannounceAtBoundary(); renderSolution();
+    }}));
 }
 function stepForward(cb){
   if (stepping || !sol || sol.stale || sol.ptr >= sol.flat.length){ playFlag = false; renderSolution(); return; }
+  // New step? Pause and show its objective first; the next press starts the moves.
+  const phaseIdx = sol.flat[sol.ptr].phase;
+  if (!sol.announced.has(phaseIdx)){
+    sol.announced.add(phaseIdx);
+    playFlag = false;
+    showStepCard(phaseIdx);
+    renderSolution();
+    return;
+  }
+  hideStepCard();
   stepping = true;
   orientForMove(sol.flat[sol.ptr].name, () => {
     if (!sol || sol.stale){ stepping = false; return; }
@@ -1558,8 +1629,9 @@ function updateHUD(){
     hudStatus.textContent = 'Solved 🎉';
   } else {
     const cur = sol.flat[sol.ptr];
-    hudStatus.textContent =
-      `Step ${cur.phase + 1}/7 · ${sol.phases[cur.phase].title} · move ${sol.ptr + 1} of ${total}`;
+    hudStatus.textContent = !stepcard.hidden
+      ? `Step ${cur.phase + 1}/7 · ${sol.phases[cur.phase].title} — read the goal, then press Next`
+      : `Step ${cur.phase + 1}/7 · ${sol.phases[cur.phase].title} · move ${sol.ptr + 1} of ${total}`;
   }
   hudPlay.textContent = playFlag ? 'Pause' : (sol.ptr ? 'Resume' : 'Play');
   hudPlay.disabled = sol.ptr >= total && !playFlag;
@@ -1569,6 +1641,56 @@ function updateHUD(){
 hudPlay.addEventListener('click', togglePlay);
 $('#hud-next').addEventListener('click', () => stepForward());
 $('#hud-back').addEventListener('click', stepBack);
+
+/* ---------- step objective cards ---------- */
+const stepcard = $('#stepcard'), miniEl = $('#minicube');
+const mini = buildCubeInto(miniEl);
+const keyOf = (p, f) => `${p[0]},${p[1]},${p[2]},${f}`;
+// All sticker keys belonging to the pieces at the given cubie positions.
+function stickerKeysAt(positions){
+  const out = [];
+  for (const p of positions)
+    for (const f of C.FACES){
+      const v = C.FACE_VEC[f];
+      if ((v[0] && p[0] === v[0]) || (v[1] && p[1] === v[1]) || (v[2] && p[2] === v[2]))
+        out.push(keyOf(p, f));
+    }
+  return out;
+}
+const CENTER_KEYS = C.FACES.map(f => keyOf(C.FACE_VEC[f], f));
+const PIECE_POS = {
+  dEdges:   [[0,-1,1],[1,-1,0],[0,-1,-1],[-1,-1,0]],
+  dCorners: [[1,-1,1],[-1,-1,1],[-1,-1,-1],[1,-1,-1]],
+  eEdges:   [[1,0,1],[-1,0,1],[-1,0,-1],[1,0,-1]],
+  uEdges:   [[0,1,1],[1,1,0],[0,1,-1],[-1,1,0]],
+  uCorners: [[1,1,1],[-1,1,1],[-1,1,-1],[1,1,-1]],
+};
+// Which stickers each step is responsible for (everything else gets dimmed).
+const PHASE_FOCUS = [
+  stickerKeysAt(PIECE_POS.dEdges),
+  stickerKeysAt(PIECE_POS.dCorners),
+  stickerKeysAt(PIECE_POS.eEdges),
+  PIECE_POS.uEdges.map(p => keyOf(p, 'U')),   // yellow cross: only the top stickers matter
+  stickerKeysAt(PIECE_POS.uEdges),
+  stickerKeysAt(PIECE_POS.uCorners),
+  stickerKeysAt(PIECE_POS.uCorners),
+].map(arr => new Set(arr.concat(CENTER_KEYS)));
+// Preview camera per step: first-layer steps show the bottom, the rest the top.
+const PREVIEW_VIEW = [[32,-36],[32,-36],[-18,-36],[-42,-36],[-42,-36],[-42,-36],[-42,-36]];
+
+function showStepCard(phaseIdx){
+  const meta = sol.phases[phaseIdx];
+  $('#sc-eyebrow').textContent = `Step ${phaseIdx + 1} of 7`;
+  $('#sc-title').textContent = meta.title;
+  $('#sc-blurb').textContent = meta.blurb;
+  const [ax, ay] = PREVIEW_VIEW[phaseIdx];
+  miniEl.style.transform = `translateZ(-40px) scale(.4) rotateX(${ax}deg) rotateY(${ay}deg)`;
+  paintStickers(mini.faceletMap, sol.phasePreviews[phaseIdx], PHASE_FOCUS[phaseIdx]);
+  badge.classList.remove('show');
+  stepcard.hidden = false;
+}
+function hideStepCard(){ stepcard.hidden = true; }
+$('#sc-start').addEventListener('click', () => stepForward());
 
 /* ---------- controls ---------- */
 const undoStack = [];
@@ -1599,6 +1721,7 @@ $('#btn-scramble').addEventListener('click', () => {
 });
 $('#btn-reset').addEventListener('click', () => {
   queue = []; playFlag = false;
+  hideStepCard();
   state = C.solvedState();
   sol = null; undoStack.length = 0;
   solNote.classList.remove('show');
@@ -1655,6 +1778,7 @@ document.querySelectorAll('[data-practice]').forEach(el => {
   el.addEventListener('click', () => {
     if (busy()) return;
     const k = +el.dataset.practice;
+    hideStepCard();
     state = C.solvedState();
     for (const m of C.scramble(22)) C.applyMove(state, m);
     const res = C.solve(state);
