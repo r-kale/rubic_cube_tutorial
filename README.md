@@ -17,10 +17,11 @@ No build step, no dependencies, no network calls. It works offline.
   orientation is unambiguous). Paint in your cube, and invalid states are rejected with a
   specific reason (impossible piece, duplicate piece, twisted corner, flipped edge,
   swapped pieces) before solving.
-- **Follow along on the cube itself** — Back / Play / Next controls float on the 3D view
-  with a step-and-move counter, each move flashes on screen with its layer and direction
-  ("R′ — right layer, counter-clockwise"), and the camera glides back to the canonical
-  angle before every solution move so the notation always matches what you see.
+- **Follow along on the cube itself** — Back / Play / Next controls sit directly under the
+  3D view with a step-and-move counter, and each move flashes on screen with its layer and
+  direction ("R′ — right layer, counter-clockwise"). The camera automatically swings to
+  frame whichever face is turning — back, bottom, and left moves rotate into view — and
+  stays put when the face is already visible.
   <kbd>→</kbd>/<kbd>←</kbd> step, <kbd>Space</kbd> plays.
 - **Tutorial** — a full beginner's (layer-by-layer) course. Every algorithm on the page is
   clickable and animates on the cube, and each step has a *Practice* button that sets the
