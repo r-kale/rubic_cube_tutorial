@@ -185,6 +185,61 @@ check(`solver fuzz: ${FUZZ} random scrambles`, () => {
               `worst solve ${maxMs}ms, total ${((Date.now() - t0) / 1000).toFixed(1)}s`);
 });
 
+// ---------- sticker-entry parser ----------
+const stickerMap = s => {
+  const map = {};
+  for (const st of C.stickers(s)) map[`${st.pos[0]},${st.pos[1]},${st.pos[2]},${st.face}`] = st.color;
+  return map;
+};
+
+check('sticker parser round-trips 300 random scrambles', () => {
+  for (let i = 0; i < 300; i++){
+    const s = C.solvedState();
+    for (const mv of C.scramble(25)) C.applyMove(s, mv);
+    const res = C.stateFromStickers(stickerMap(s));
+    if (res.error) throw new Error('unexpected error: ' + res.error);
+    assert(statesEqual(res.state, s), 'round-trip mismatch');
+  }
+});
+
+check('sticker parser rejects impossible cubes with helpful errors', () => {
+  // twisted corner: rotate URF's three stickers in place
+  let map = stickerMap(C.solvedState());
+  map['1,1,1,U'] = 'F'; map['1,1,1,R'] = 'U'; map['1,1,1,F'] = 'R';
+  let res = C.stateFromStickers(map);
+  assert(res.error && /twisted/.test(res.error), 'expected twist error, got: ' + res.error);
+
+  // flipped edge: swap UF's two stickers
+  map = stickerMap(C.solvedState());
+  map['0,1,1,U'] = 'F'; map['0,1,1,F'] = 'U';
+  res = C.stateFromStickers(map);
+  assert(res.error && /flipped/.test(res.error), 'expected flip error, got: ' + res.error);
+
+  // two swapped edges: exchange the UF and UR pieces (odd permutation)
+  map = stickerMap(C.solvedState());
+  map['1,1,0,R'] = 'F'; map['0,1,1,F'] = 'R';
+  res = C.stateFromStickers(map);
+  assert(res.error && /swapped/.test(res.error), 'expected parity error, got: ' + res.error);
+
+  // impossible piece: mirror-image corner colors that exist on no real piece
+  map = stickerMap(C.solvedState());
+  map['1,1,1,U'] = 'D';
+  res = C.stateFromStickers(map);
+  assert(res.error && /No corner piece/.test(res.error), 'expected bad-piece error, got: ' + res.error);
+
+  // duplicate piece
+  map = stickerMap(C.solvedState());
+  map['0,1,1,U'] = 'U'; map['0,1,1,F'] = 'R';   // UF slot now also holds a yellow-orange edge
+  res = C.stateFromStickers(map);
+  assert(res.error && /appears twice/.test(res.error), 'expected duplicate error, got: ' + res.error);
+
+  // missing sticker
+  map = stickerMap(C.solvedState());
+  delete map['0,1,1,U'];
+  res = C.stateFromStickers(map);
+  assert(res.error && /empty/.test(res.error), 'expected missing-sticker error, got: ' + res.error);
+});
+
 check('solver on an already-solved cube returns 7 empty phases', () => {
   const res = C.solve(C.solvedState());
   assert(res.phases.length === 7, 'wrong phase count');

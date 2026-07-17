@@ -24,6 +24,7 @@
   --chip-ink:#2a3155;
   --shadow:0 10px 30px rgba(28,35,64,.10);
   --stage-bg:radial-gradient(ellipse at 50% 38%, #ffffff 0%, #e6eaf4 70%, #dde2f0 100%);
+  --bad:#d64550;
 }
 @media (prefers-color-scheme: dark){
   :root{
@@ -98,8 +99,62 @@ nav.toc a:hover{border-bottom-color:var(--accent); color:var(--ink)}
 }
 .viewport:active{cursor:grabbing}
 .viewport .hint{
-  position:absolute; left:14px; bottom:10px; font-size:12px; color:var(--muted); pointer-events:none;
+  position:absolute; left:14px; top:10px; font-size:12px; color:var(--muted); pointer-events:none;
 }
+.cube.viewglide{transition:transform .38s ease}
+.viewport .hud{
+  position:absolute; left:50%; bottom:12px; transform:translateX(-50%);
+  display:flex; flex-direction:column; align-items:center; gap:8px; z-index:5;
+}
+.hud-status{
+  font-size:12.5px; color:var(--muted); background:color-mix(in srgb, var(--panel) 88%, transparent);
+  border:1px solid var(--line); padding:3px 12px; border-radius:999px; white-space:nowrap;
+  max-width:min(92vw, 460px); overflow:hidden; text-overflow:ellipsis;
+}
+.hud-buttons{display:flex; gap:8px}
+.movebadge{
+  position:absolute; top:12px; left:50%; transform:translateX(-50%); z-index:5;
+  background:color-mix(in srgb, var(--panel) 90%, transparent);
+  border:1px solid var(--accent); border-radius:12px; padding:5px 14px;
+  font-size:13.5px; color:var(--ink); opacity:0; transition:opacity .18s ease;
+  pointer-events:none; white-space:nowrap;
+}
+.movebadge b{
+  font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size:18px; color:var(--accent); margin-right:8px;
+}
+.movebadge.show{opacity:1}
+
+/* ---------- "Enter my cube" dialog ---------- */
+dialog#painter{
+  background:var(--panel); color:var(--ink); border:1px solid var(--line);
+  border-radius:16px; padding:20px; max-width:600px; width:calc(100vw - 40px);
+  box-shadow:var(--shadow);
+}
+dialog#painter::backdrop{background:rgba(5,8,18,.55)}
+dialog#painter h2{margin:0 0 6px; font-size:19px}
+.painter-help{font-size:14px; color:var(--muted); margin:0 0 12px; max-width:60ch}
+.palette{display:flex; gap:8px; margin:0 0 14px; flex-wrap:wrap}
+.palette button{width:34px; height:34px; border-radius:9px; border:2px solid var(--line); cursor:pointer}
+.palette button.sel{outline:3px solid var(--accent); outline-offset:2px}
+.net{
+  display:grid; gap:8px; justify-content:center; margin-bottom:12px;
+  grid-template-areas:". U . ." "L F R B" ". D . .";
+}
+.netface{
+  display:grid; grid-template-columns:repeat(3, 28px); grid-auto-rows:28px; gap:3px;
+  background:#0b0e18; padding:4px; border-radius:8px;
+}
+.netface button{
+  width:28px; height:28px; border:none; border-radius:5px; cursor:pointer;
+  background:#454e6b; padding:0;
+}
+.netface button:disabled{cursor:default; box-shadow:inset 0 0 0 2px rgba(0,0,0,.4)}
+@media (max-width:480px){
+  .netface{grid-template-columns:repeat(3, 21px); grid-auto-rows:21px}
+  .netface button{width:21px; height:21px}
+}
+.painter-error{color:var(--bad); font-size:14px; min-height:22px; margin:0 0 8px}
 .scene{position:absolute; inset:0}
 .cube{
   position:absolute; left:50%; top:50%; width:0; height:0;
@@ -264,6 +319,15 @@ footer.site .wrap{display:flex; flex-direction:column; gap:6px}
       <div class="viewport" id="viewport" aria-label="3D cube view. Drag to rotate.">
         <div class="scene"><div class="cube" id="cube" aria-hidden="true"></div></div>
         <div class="hint">drag to orbit · double-click to reset view</div>
+        <div class="movebadge" id="movebadge" aria-live="polite"></div>
+        <div class="hud" id="hud" hidden>
+          <div class="hud-status" id="hudstatus"></div>
+          <div class="hud-buttons">
+            <button class="btn" id="hud-back" title="Step back (←)">‹ Back</button>
+            <button class="btn primary" id="hud-play" title="Play / pause (space)">Play</button>
+            <button class="btn" id="hud-next" title="Next move (→)">Next ›</button>
+          </div>
+        </div>
       </div>
       <div class="progress" id="progress" aria-label="Solve progress"></div>
     </div>
@@ -272,6 +336,7 @@ footer.site .wrap{display:flex; flex-direction:column; gap:6px}
       <h2>Controls</h2>
       <div class="row">
         <button class="btn primary" id="btn-solve">Solve step-by-step</button>
+        <button class="btn" id="btn-enter">Enter my cube</button>
         <button class="btn" id="btn-scramble">Scramble</button>
         <button class="btn" id="btn-reset">Reset</button>
         <button class="btn" id="btn-undo" title="Undo your last manual move">Undo</button>
@@ -304,9 +369,10 @@ footer.site .wrap{display:flex; flex-direction:column; gap:6px}
     course</strong> for the 3×3 Rubik's cube. Everything runs in your browser from this single file —
     no internet needed once it's open.</p>
     <ul>
-      <li><strong>Stuck on a real cube?</strong> Press <em>Scramble</em> a few times to see how solutions look, or
-      copy your cube's twists onto the virtual cube with the move pad, then press <em>Solve step-by-step</em>
-      and play the solution back at your own pace.</li>
+      <li><strong>Stuck on a real cube?</strong> Press <em>Enter my cube</em> and copy your cube's stickers
+      onto the flat map to get a personal solution. Then follow along with the <em>Next</em> button floating
+      right on the cube — the view re-aligns itself before every move, and each move flashes on screen with
+      its layer and direction. <kbd>→</kbd> <kbd>←</kbd> and <kbd>Space</kbd> also step and play.</li>
       <li><strong>Want to learn?</strong> Read the steps below. Every algorithm on this page is a button —
       click it and the cube above performs it. Each step also has a <em>Practice</em> button that sets
       the cube up so only that step is left to do.</li>
@@ -559,6 +625,22 @@ footer.site .wrap{display:flex; flex-direction:column; gap:6px}
     <div>Solver: layer-by-layer beginner method, verified against thousands of random scrambles.</div>
   </div>
 </footer>
+
+<dialog id="painter" aria-label="Enter your cube">
+  <h2>Enter your cube</h2>
+  <p class="painter-help">Hold your real cube with the <strong>white center facing down</strong> and the
+  <strong>green center facing you</strong>, then copy every sticker onto this map. The centers are fixed —
+  they tell you which face is which. Pick a color below, then click stickers to paint them.</p>
+  <div class="palette" id="palette" aria-label="Color palette"></div>
+  <div class="net" id="net"></div>
+  <div class="painter-error" id="painter-error" role="alert"></div>
+  <div class="row">
+    <button class="btn primary" id="painter-solve">Load &amp; solve</button>
+    <button class="btn" id="painter-copy">Copy current cube</button>
+    <button class="btn" id="painter-clear">Clear</button>
+    <button class="btn" id="painter-cancel">Cancel</button>
+  </div>
+</dialog>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
@@ -1017,6 +1099,69 @@ function solve(input){
   return { phases, length };
 }
 
+/* ---------- reading a cube from its stickers ---------- */
+const COLOR_NAMES = { U:'yellow', D:'white', F:'green', B:'blue', R:'orange', L:'red' };
+const SIDE_WORDS = { U:'top', D:'bottom', F:'front', B:'back', R:'right', L:'left' };
+const skey = (pos, f) => pos[0] + ',' + pos[1] + ',' + pos[2] + ',' + f;
+const permParity = arr => {
+  let p = 0;
+  for (let i = 0; i < arr.length; i++)
+    for (let j = i + 1; j < arr.length; j++)
+      if (arr[i] > arr[j]) p ^= 1;
+  return p;
+};
+
+// map: "x,y,z,face" -> color letter (U/R/F/D/L/B) for the 54 stickers.
+// Returns {state} on success, or {error: "human-readable reason"} if the
+// entered stickers don't form a real, solvable cube.
+function stateFromStickers(map){
+  const err = msg => ({ error: msg });
+  const colorList = cols => cols.map(c => COLOR_NAMES[c]).join('-');
+  const slotWords = def => def.facelets.map(f => SIDE_WORDS[f]).join('-');
+  const s = solvedState();
+  const usedC = new Array(8).fill(false), usedE = new Array(12).fill(false);
+  for (let i = 0; i < 8; i++){
+    const def = CORNERS[i];
+    const cols = def.facelets.map(f => map[skey(def.pos, f)]);
+    if (cols.some(c => !c)) return err(`The ${slotWords(def)} corner still has empty stickers.`);
+    let found = -1, ori = 0;
+    outer: for (let p = 0; p < 8; p++){
+      for (let o = 0; o < 3; o++){
+        let ok = true;
+        for (let k = 0; k < 3; k++)
+          if (cols[k] !== CORNERS[p].facelets[((k - o) % 3 + 3) % 3]){ ok = false; break; }
+        if (ok){ found = p; ori = o; break outer; }
+      }
+    }
+    if (found < 0) return err(`No corner piece has the colors ${colorList(cols)} in that arrangement — check the ${slotWords(def)} corner.`);
+    if (usedC[found]) return err(`The ${colorList(CORNERS[found].facelets)} corner appears twice.`);
+    usedC[found] = true; s.cp[i] = found; s.co[i] = ori;
+  }
+  for (let i = 0; i < 12; i++){
+    const def = EDGES[i];
+    const cols = def.facelets.map(f => map[skey(def.pos, f)]);
+    if (cols.some(c => !c)) return err(`The ${slotWords(def)} edge still has empty stickers.`);
+    let found = -1, ori = 0;
+    outer: for (let p = 0; p < 12; p++){
+      for (let o = 0; o < 2; o++){
+        if (cols[0] === EDGES[p].facelets[(2 - o) % 2] && cols[1] === EDGES[p].facelets[(3 - o) % 2]){
+          found = p; ori = o; break outer;
+        }
+      }
+    }
+    if (found < 0) return err(`No edge piece has the colors ${colorList(cols)} — check the ${slotWords(def)} edge.`);
+    if (usedE[found]) return err(`The ${colorList(EDGES[found].facelets)} edge appears twice.`);
+    usedE[found] = true; s.ep[i] = found; s.eo[i] = ori;
+  }
+  if (Array.from(s.co).reduce((a, b) => a + b, 0) % 3)
+    return err('This cube is impossible to solve: a corner is twisted. One corner was probably entered with its colors rotated.');
+  if (Array.from(s.eo).reduce((a, b) => a + b, 0) % 2)
+    return err('This cube is impossible to solve: an edge is flipped. One edge was probably entered with its two colors swapped.');
+  if (permParity(s.cp) !== permParity(s.ep))
+    return err('This cube is impossible to solve: two pieces are swapped somewhere. Double-check each face against your real cube.');
+  return { state: s };
+}
+
 /* ---------- extras ---------- */
 function scramble(n = 22){
   const out = [];
@@ -1046,7 +1191,7 @@ return {
   FACES, FACE_VEC, MOVE_NAMES, PHASE_META,
   solvedState, cloneState, isSolved,
   parseAlg, invertMove, applyMove, applyAlg,
-  stickers, solve, scramble, stageStatus,
+  stickers, solve, scramble, stageStatus, stateFromStickers,
 };
 })();
 /*__CORE_END__*/
@@ -1062,6 +1207,7 @@ const C = CubeCore;
 const $ = sel => document.querySelector(sel);
 
 const COLORS = { U:'#ffd60a', D:'#f5f7fa', F:'#009b48', B:'#0045ad', R:'#ff5800', L:'#b90000' };
+const FACE_WORD = { U:'top', D:'bottom', L:'left', R:'right', F:'front', B:'back' };
 const STAGE_LABELS = ['Cross', 'First layer', 'Middle', 'Yellow cross', 'Yellow edges', 'Corners placed', 'Solved'];
 
 let state = C.solvedState();
@@ -1138,8 +1284,23 @@ function applyView(){
   cubeEl.style.transform = `translateZ(-60px) rotateX(${viewX}deg) rotateY(${viewY}deg)`;
 }
 applyView();
+// Glide the camera back to the canonical angle (white down, green front) so
+// solution moves always read correctly, even after the user drags the view.
+function resetViewSmooth(cb){
+  const tx = -24;
+  const ty = -36 + Math.round((viewY + 36) / 360) * 360;   // nearest equivalent angle
+  if (Math.abs(viewX - tx) < 2 && Math.abs(viewY - ty) < 2){
+    viewX = tx; viewY = ty; applyView();
+    cb && cb(); return;
+  }
+  if (REDUCED){ viewX = tx; viewY = ty; applyView(); cb && cb(); return; }
+  cubeEl.classList.add('viewglide');
+  viewX = tx; viewY = ty; applyView();
+  setTimeout(() => { cubeEl.classList.remove('viewglide'); cb && cb(); }, 400);
+}
 let dragging = null;
 viewport.addEventListener('pointerdown', e => {
+  if (e.target.closest('button')) return;
   dragging = { x: e.clientX, y: e.clientY, vx: viewX, vy: viewY };
   viewport.setPointerCapture(e.pointerId);
 });
@@ -1150,7 +1311,10 @@ viewport.addEventListener('pointermove', e => {
   applyView();
 });
 viewport.addEventListener('pointerup', () => dragging = null);
-viewport.addEventListener('dblclick', () => { viewX = -24; viewY = -36; applyView(); });
+viewport.addEventListener('dblclick', e => {
+  if (e.target.closest('button')) return;
+  viewX = -24; viewY = -36; applyView();
+});
 
 /* ---------- animation queue ---------- */
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1162,6 +1326,7 @@ let queue = [], animating = false;
 function animateMove(name, dur, cb){
   const apply = () => { C.applyMove(state, name); render(); cb && cb(); };
   if (dur <= 0){ apply(); return; }
+  showBadge(name, dur);
   const face = name[0];
   const q = name.endsWith('2') ? 2 : name.endsWith("'") ? -1 : 1;
   const [axis, deg] = MOVE_AXIS[face];
@@ -1201,6 +1366,18 @@ function enqueue(moves, opts = {}){
 }
 const busy = () => animating || queue.length > 0;
 
+/* ---------- move badge (flashes each move over the cube) ---------- */
+const badge = $('#movebadge');
+let badgeTimer = null;
+function showBadge(name, dur){
+  const dirWord = name.endsWith("'") ? 'counter-clockwise ⟲'
+                : name.endsWith('2') ? 'half turn ⟳⟳' : 'clockwise ⟳';
+  badge.innerHTML = `<b>${name}</b>${FACE_WORD[name[0]]} layer · ${dirWord}`;
+  badge.classList.add('show');
+  clearTimeout(badgeTimer);
+  badgeTimer = setTimeout(() => badge.classList.remove('show'), Math.max(dur * 1.6 + 420, 700));
+}
+
 /* ---------- toast ---------- */
 const toastEl = $('#toast');
 let toastTimer = null;
@@ -1215,6 +1392,7 @@ function toast(msg){
 const solEl = $('#solution'), solNote = $('#solnote');
 let sol = null;   // { phases, flat: [{name, phase}], ptr, stale }
 let playFlag = false;
+let stepping = false;   // guards double-triggered steps while the view glides
 
 function markStale(){
   if (sol && !sol.stale){ sol.stale = true; playFlag = false; solNote.classList.add('show'); renderSolution(); }
@@ -1223,7 +1401,7 @@ function markStale(){
 function computeSolution(){
   if (busy()) return;
   playFlag = false;
-  if (C.isSolved(state)){ sol = null; solEl.innerHTML = '<div class="empty">Already solved — scramble it first!</div>'; solNote.classList.remove('show'); return; }
+  if (C.isSolved(state)){ sol = null; solEl.innerHTML = '<div class="empty">Already solved — scramble it first!</div>'; solNote.classList.remove('show'); updateHUD(); return; }
   const res = C.solve(state);
   const flat = [];
   res.phases.forEach((p, pi) => p.moves.forEach(name => flat.push({ name, phase: pi })));
@@ -1281,37 +1459,73 @@ function renderSolution(){
   $('#btn-step').disabled = disabled || busy() || sol.ptr >= sol.flat.length;
   $('#btn-back').disabled = disabled || busy() || sol.ptr === 0;
 
-  $('#btn-play').addEventListener('click', () => {
-    if (playFlag){ playFlag = false; renderSolution(); return; }
-    playFlag = true; renderSolution(); playNext();
-  });
-  $('#btn-step').addEventListener('click', () => { if (!busy()) stepForward(); });
-  $('#btn-back').addEventListener('click', () => {
-    if (busy() || !sol || sol.ptr === 0) return;
-    const mv = sol.flat[sol.ptr - 1].name;
-    const inv = C.MOVE_NAMES[C.invertMove(C.parseAlg(mv)[0])];
-    enqueue([inv], { after: () => { sol.ptr--; renderSolution(); } });
-  });
+  $('#btn-play').addEventListener('click', togglePlay);
+  $('#btn-step').addEventListener('click', () => stepForward());
+  $('#btn-back').addEventListener('click', stepBack);
+  updateHUD();
 }
 
+function togglePlay(){
+  if (!sol || sol.stale) return;
+  if (playFlag){ playFlag = false; renderSolution(); return; }
+  if (sol.ptr >= sol.flat.length) return;
+  playFlag = true; renderSolution(); playNext();
+}
+function stepBack(){
+  if (busy() || stepping || !sol || sol.stale || sol.ptr === 0) return;
+  playFlag = false;
+  const mv = sol.flat[sol.ptr - 1].name;
+  const inv = C.MOVE_NAMES[C.invertMove(C.parseAlg(mv)[0])];
+  stepping = true;
+  resetViewSmooth(() =>
+    enqueue([inv], { after: () => { stepping = false; sol.ptr--; renderSolution(); } }));
+}
 function stepForward(cb){
-  if (!sol || sol.stale || sol.ptr >= sol.flat.length) { playFlag = false; renderSolution(); return; }
-  const mv = sol.flat[sol.ptr].name;
-  enqueue([mv], { after: () => {
-    sol.ptr++;
-    renderSolution();
-    if (sol.ptr >= sol.flat.length){
-      playFlag = false;
-      toast('Solved! 🎉 Try following the same 7 steps yourself.');
+  if (stepping || !sol || sol.stale || sol.ptr >= sol.flat.length){ playFlag = false; renderSolution(); return; }
+  stepping = true;
+  resetViewSmooth(() => {
+    if (!sol || sol.stale){ stepping = false; return; }
+    const mv = sol.flat[sol.ptr].name;
+    enqueue([mv], { after: () => {
+      stepping = false;
+      sol.ptr++;
       renderSolution();
-    }
-    cb && cb();
-  }});
+      if (sol.ptr >= sol.flat.length){
+        playFlag = false;
+        toast('Solved! 🎉 Try following the same 7 steps yourself.');
+        renderSolution();
+      }
+      cb && cb();
+    }});
+  });
 }
 function playNext(){
   if (!playFlag) return;
   stepForward(() => playNext());
 }
+
+/* ---------- on-cube HUD (playback without leaving the simulation) ---------- */
+const hud = $('#hud'), hudStatus = $('#hudstatus'), hudPlay = $('#hud-play');
+function updateHUD(){
+  const active = !!(sol && !sol.stale);
+  hud.hidden = !active;
+  if (!active) return;
+  const total = sol.flat.length;
+  if (sol.ptr >= total){
+    hudStatus.textContent = 'Solved 🎉';
+  } else {
+    const cur = sol.flat[sol.ptr];
+    hudStatus.textContent =
+      `Step ${cur.phase + 1}/7 · ${sol.phases[cur.phase].title} · move ${sol.ptr + 1} of ${total}`;
+  }
+  hudPlay.textContent = playFlag ? 'Pause' : (sol.ptr ? 'Resume' : 'Play');
+  hudPlay.disabled = sol.ptr >= total && !playFlag;
+  $('#hud-next').disabled = playFlag || sol.ptr >= total;
+  $('#hud-back').disabled = playFlag || sol.ptr === 0;
+}
+hudPlay.addEventListener('click', togglePlay);
+$('#hud-next').addEventListener('click', () => stepForward());
+$('#hud-back').addEventListener('click', stepBack);
 
 /* ---------- controls ---------- */
 const undoStack = [];
@@ -1346,7 +1560,7 @@ $('#btn-reset').addEventListener('click', () => {
   sol = null; undoStack.length = 0;
   solNote.classList.remove('show');
   solEl.innerHTML = '<div class="empty">Cube reset. Scramble it, then press <strong>Solve step-by-step</strong>.</div>';
-  render(); updateButtons();
+  render(); updateButtons(); updateHUD();
 });
 $('#btn-undo').addEventListener('click', () => {
   if (busy() || !undoStack.length) return;
@@ -1364,6 +1578,12 @@ function updateButtons(){
 /* keyboard */
 document.addEventListener('keydown', e => {
   if (e.target.matches('input, textarea') || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (painter.open) return;
+  if (sol && !sol.stale){
+    if (e.key === ' '){ togglePlay(); e.preventDefault(); return; }
+    if (e.key === 'ArrowRight'){ if (!busy()) stepForward(); e.preventDefault(); return; }
+    if (e.key === 'ArrowLeft'){ stepBack(); e.preventDefault(); return; }
+  }
   const f = e.key.toUpperCase();
   if (['U','D','L','R','F','B'].includes(f)){
     manualMove(f + (e.shiftKey ? "'" : ''));
@@ -1372,10 +1592,16 @@ document.addEventListener('keydown', e => {
 });
 
 /* clickable algorithm chips */
+function ensureCubeVisible(){
+  const r = viewport.getBoundingClientRect();
+  if (r.bottom < 90 || r.top > innerHeight - 90)
+    document.querySelector('.bench').scrollIntoView({ behavior: REDUCED ? 'auto' : 'smooth' });
+}
 document.querySelectorAll('.alg[data-alg]').forEach(el => {
   el.addEventListener('click', () => {
     if (busy()) return;
     markStale();
+    ensureCubeVisible();
     enqueue(el.dataset.alg.split(/\s+/));
     toast(el.dataset.alg);
   });
@@ -1393,10 +1619,109 @@ document.querySelectorAll('[data-practice]').forEach(el => {
     sol = null; undoStack.length = 0;
     solNote.classList.remove('show');
     solEl.innerHTML = '<div class="empty">Practice mode — solve the next step yourself, or press <strong>Solve step-by-step</strong> to see the answer.</div>';
-    render();
+    render(); updateHUD();
     toast(`Practice: ${C.PHASE_META[k][1]} — your move!`);
     document.querySelector('.bench').scrollIntoView({ behavior: REDUCED ? 'auto' : 'smooth' });
   });
+});
+
+/* ---------- "Enter my cube" painter ---------- */
+const painter = $('#painter'), painterError = $('#painter-error');
+// Per-face 2D basis for the unfolded net: cell (row, col) sits at
+// faceNormal + right*(col-1) + down*(row-1) in cubie coordinates.
+const NET_BASIS = {
+  U: { right:[1,0,0],  down:[0,0,1]  },
+  L: { right:[0,0,1],  down:[0,-1,0] },
+  F: { right:[1,0,0],  down:[0,-1,0] },
+  R: { right:[0,0,-1], down:[0,-1,0] },
+  B: { right:[-1,0,0], down:[0,-1,0] },
+  D: { right:[1,0,0],  down:[0,0,-1] },
+};
+const COLOR_WORDS = { U:'yellow', D:'white', F:'green', B:'blue', R:'orange', L:'red' };
+let selColor = 'U';
+const netCells = {};
+const paletteEl = $('#palette');
+for (const f of ['D','U','F','B','R','L']){
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.style.background = COLORS[f];
+  b.title = COLOR_WORDS[f];
+  b.setAttribute('aria-label', COLOR_WORDS[f]);
+  if (f === selColor) b.classList.add('sel');
+  b.addEventListener('click', () => {
+    selColor = f;
+    paletteEl.querySelectorAll('button').forEach(x => x.classList.remove('sel'));
+    b.classList.add('sel');
+  });
+  paletteEl.appendChild(b);
+}
+const netEl = $('#net');
+for (const f of ['U','L','F','R','B','D']){
+  const faceDiv = document.createElement('div');
+  faceDiv.className = 'netface';
+  faceDiv.style.gridArea = f;
+  const { right, down } = NET_BASIS[f];
+  const n = C.FACE_VEC[f];
+  for (let row = 0; row < 3; row++){
+    for (let col = 0; col < 3; col++){
+      const pos = [0,1,2].map(a => n[a] + right[a] * (col - 1) + down[a] * (row - 1));
+      const cell = document.createElement('button');
+      cell.type = 'button';
+      if (row === 1 && col === 1){
+        cell.disabled = true;
+        cell.dataset.c = f;
+        cell.style.background = COLORS[f];
+        cell.title = `${COLOR_WORDS[f]} center (fixed)`;
+      } else {
+        cell.addEventListener('click', () => paintCell(cell, selColor));
+      }
+      netCells[`${pos[0]},${pos[1]},${pos[2]},${f}`] = cell;
+      faceDiv.appendChild(cell);
+    }
+  }
+  netEl.appendChild(faceDiv);
+}
+function paintCell(cell, letter){
+  cell.dataset.c = letter || '';
+  cell.style.background = letter ? COLORS[letter] : '#454e6b';
+}
+function painterCopyCurrent(){
+  for (const st of C.stickers(state)){
+    const cell = netCells[`${st.pos[0]},${st.pos[1]},${st.pos[2]},${st.face}`];
+    if (cell && !cell.disabled) paintCell(cell, st.color);
+  }
+}
+$('#btn-enter').addEventListener('click', () => {
+  if (busy()) return;
+  painterCopyCurrent();
+  painterError.textContent = '';
+  painter.showModal();
+});
+$('#painter-copy').addEventListener('click', () => { painterCopyCurrent(); painterError.textContent = ''; });
+$('#painter-clear').addEventListener('click', () => {
+  for (const key in netCells) if (!netCells[key].disabled) paintCell(netCells[key], null);
+  painterError.textContent = '';
+});
+$('#painter-cancel').addEventListener('click', () => painter.close());
+$('#painter-solve').addEventListener('click', () => {
+  const map = {};
+  for (const key in netCells){ const c = netCells[key].dataset.c; if (c) map[key] = c; }
+  const res = C.stateFromStickers(map);
+  if (res.error){ painterError.textContent = res.error; return; }
+  painter.close();
+  queue = []; playFlag = false;
+  state = res.state;
+  undoStack.length = 0;
+  solNote.classList.remove('show');
+  render();
+  if (C.isSolved(state)){
+    sol = null; updateHUD();
+    solEl.innerHTML = '<div class="empty">That cube is already solved!</div>';
+    toast('That cube is already solved!');
+  } else {
+    computeSolution();
+    toast('Cube loaded — here is your step-by-step solution.');
+  }
 });
 
 /* face diagrams in the tutorial */

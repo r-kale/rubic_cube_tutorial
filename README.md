@@ -13,6 +13,15 @@ No build step, no dependencies, no network calls. It works offline.
   the same 7 steps as the tutorial (white cross → white corners → middle layer → yellow
   cross → yellow edges → position corners → orient corners), with play / pause / step
   forward / step back controls.
+- **Enter your real cube** — *Enter my cube* opens a flat sticker map (centers fixed so
+  orientation is unambiguous). Paint in your cube, and invalid states are rejected with a
+  specific reason (impossible piece, duplicate piece, twisted corner, flipped edge,
+  swapped pieces) before solving.
+- **Follow along on the cube itself** — Back / Play / Next controls float on the 3D view
+  with a step-and-move counter, each move flashes on screen with its layer and direction
+  ("R′ — right layer, counter-clockwise"), and the camera glides back to the canonical
+  angle before every solution move so the notation always matches what you see.
+  <kbd>→</kbd>/<kbd>←</kbd> step, <kbd>Space</kbd> plays.
 - **Tutorial** — a full beginner's (layer-by-layer) course. Every algorithm on the page is
   clickable and animates on the cube, and each step has a *Practice* button that sets the
   cube up so only that step remains.
