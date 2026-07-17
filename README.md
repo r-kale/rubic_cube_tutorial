@@ -18,11 +18,15 @@ No build step, no dependencies, no network calls. It works offline.
   specific reason (impossible piece, duplicate piece, twisted corner, flipped edge,
   swapped pieces) before solving.
 - **Follow along on the cube itself** — Back / Play / Next controls sit directly under the
-  3D view with a step-and-move counter, and each move flashes on screen with its layer and
-  direction ("R′ — right layer, counter-clockwise"). The camera automatically swings to
-  frame whichever face is turning — back, bottom, and left moves rotate into view — and
-  stays put when the face is already visible.
+  3D view with a step-and-move counter, and each move stays on screen for a few seconds
+  with its layer and direction ("R′ — right layer, counter-clockwise"). The camera
+  automatically swings to frame whichever face is turning — back, bottom, and left moves
+  rotate into view — and stays put when the face is already visible.
   <kbd>→</kbd>/<kbd>←</kbd> step, <kbd>Space</kbd> plays.
+- **Every step opens with its objective** — when playback reaches a new step, it pauses on
+  a goal card: a mini 3D preview of the cube as it will look when the step completes, with
+  the pieces that step solves highlighted and everything else dimmed. Press Next when
+  you've absorbed it.
 - **Tutorial** — a full beginner's (layer-by-layer) course. Every algorithm on the page is
   clickable and animates on the cube, and each step has a *Practice* button that sets the
   cube up so only that step remains.
